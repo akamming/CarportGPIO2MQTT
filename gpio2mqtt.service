@@ -1,0 +1,14 @@
+[Unit]
+Description=gpio2mqtt
+After=network.target
+
+[Service]
+PermissionsStartOnly=false
+ExecStart=/home/pi/gpio/bin/python /home/pi/gpio/gpiomqtt.py
+WorkingDirectory = /home/pi/gpio
+Type=simple
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
