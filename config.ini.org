@@ -1,0 +1,13 @@
+[mqtt]
+broker = <ip adress of your broker>
+port = <port of your broker >
+hatopic= <ad topic of homeassistant, normally homassistant>
+username = <your mqtt username>
+password = <your mqtt password>
+qos = 0
+retain = True|False
+
+; normally don't change these figures
+[intervals]
+reconnectdelay=5
+PublishInterval=900
