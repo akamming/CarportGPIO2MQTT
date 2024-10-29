@@ -4,11 +4,13 @@ After=network.target
 
 [Service]
 PermissionsStartOnly=false
-ExecStart=/home/pi/gpio/bin/python /home/pi/gpio/gpiomqtt.py
-WorkingDirectory = /home/pi/gpio
+ExecStart=/home/pi/CarportGPIO2MQTT/bin/python /home/pi/CarportGPIO2MQTT/gpiomqtt.py
+WorkingDirectory = /home/pi/CarportGPIO2MQTT
 Type=simple
 Restart=always
 RestartSec=1
 
+
 [Install]
 WantedBy=multi-user.target
+

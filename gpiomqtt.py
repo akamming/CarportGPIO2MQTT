@@ -63,8 +63,6 @@ def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
 def connect_mqtt():
     global broker,port,username,password
 
-    Debug("broker is "+broker+", port is "+str(port)+", username="+username+", password = "+password)
-
     client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION2)
     client.username_pw_set(username, password)
     client.on_connect = on_connect
