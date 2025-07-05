@@ -1,168 +1,106 @@
-#standard libs
-import signal
-import sys
-import socket
+#!/usr/bin/env python3
+
 import time
 import json
-import os
-import uuid
-import configparser
+import signal
+import sys
+from gpiozero import Device, Button
+import paho.mqtt.client as mqtt
 
-#additional libs (see requirements.txt)
-from paho.mqtt import client as mqtt_client
+# Forceer RPi.GPIO backend voor gpiozero
 
-Debugging=True
+# Configuratie (pas aan naar jouw situatie)
+MQTT_BROKER = "localhost"
+MQTT_PORT = 1883
+MQTT_CLIENT_ID = "gpio2mqtt"
+GPIO_PIN = 17  # Voorbeeld GPIO pin (BCM nummering)
+MQTT_TOPIC_COMMAND = "domoticz/light/CarportLamp/set"
+MQTT_TOPIC_STATE = "domoticz/light/CarportLamp/state"
+MQTT_TOPIC_CONFIG = "homeassistant/light/domoticz/CarportLamp/config"
 
-switchname= "CarportLamp"
-client_id = socket.gethostname()
+# Globale variabelen
+mqtt_client = None
+button = None
+running = True
+lamp_status = False
 
-Softwareversion = os.uname().release
-
-#commands to export the pin
-ExportPinCommand="echo 526 > /sys/class/gpio/export ; echo out > /sys/class/gpio/gpio526/direction ; echo 1 > /sys/class/gpio/gpio526/active_low"
-UnexportPinCommand="echo 526 > /sys/class/gpio/unexport"
-SwitchOnCommand="echo 1 > /sys/class/gpio/gpio526/value"
-SwitchOffCommand="echo 0 > /sys/class/gpio/gpio526/value"
-
-def Debug(text):
-    if Debugging: print(text)
-
-def switch_carportlamp(value):
-    global client
-    if (value):
-        os.system(SwitchOnCommand)
-        Debug("Switching on carportlamp")
-        client.publish(CarportStateTopic,"ON",qos,retain)
-    else:
-        os.system(SwitchOffCommand)
-        Debug("Switching off carportlamp")
-        client.publish(CarportStateTopic,"OFF",qos,retain)
-
-def on_connect(client, userdata, flags, rc, Properties=None):
-    if rc == 0:
-        Debug("Connected to MQTT Broker!")
-
-        #listen to messages
-        publishCarportLamp()
-    else:
-        Debug("Failed to connect, return code "+str(rc))
-
-def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
-    Debug("client disconnected due to reason: "+str(reason_code))
-    disconnected=True
-    NumberOfTries=1
-    while disconnected:
-        try:
-            client.reconnect()
-            disconnected=False
-        except:
-            Debug("Connection ("+str(NumberOfTries)+") failed, trying again in "+str(reconnectdelay)+" sec")
-            NumberOfTries+=1
-            time.sleep(reconnectdelay)
-
-def connect_mqtt():
-    global broker,port,username,password
-
-    client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION2)
-    client.username_pw_set(username, password)
-    client.on_connect = on_connect
-    client.on_disconnect = on_disconnect
-    client.on_message = on_message
-
-    disconnected=True
-    NumberOfTries=1
-    while disconnected:
-        try:
-            client.connect(broker, port)
-            disconnected=False
-        except:
-            Debug("Connection ("+str(NumberOfTries)+") failed, trying again in "+str(reconnectdelay)+" sec")
-            NumberOfTries+=1
-            time.sleep(reconnectdelay)
-    return client
-
-def publishCarportLamp():
-
-    ADmessage = {
-            "name": "CarportLamp",
-            "unique_id": client_id+"_"+switchname,
-            "cmd_t": CarportCommandTopic,
-            "stat_t": CarportStateTopic,
-            "dev": {
-                "ids": hex(uuid.getnode()),
-                "name": client_id,
-                "sw": Softwareversion,
-                "mdl": "pi4b",
-                "mf": "raspberry pi foundation"
-                }
-            }
-    client.publish(CarportDiscoveryTopic, json.dumps(ADmessage), qos, retain)
-    Debug("Publish ["+json.dumps(ADmessage)+"] on ["+CarportDiscoveryTopic+"]")
-
-    client.subscribe(CarportCommandTopic)
-    Debug("Subscribed to "+CarportCommandTopic)
-
-    #Set initial value
-    switch_carportlamp(False)
+def on_connect(client, userdata, flags, rc):
+    print(f"Connected to MQTT Broker with result code {rc}")
+    client.subscribe(MQTT_TOPIC_COMMAND)
+    # Publiceer HomeAssistant discovery config
+    config_payload = json.dumps([{
+        "name": "CarportLamp",
+        "unique_id": "domoticz_CarportLamp",
+        "cmd_t": MQTT_TOPIC_COMMAND,
+        "stat_t": MQTT_TOPIC_STATE,
+        "dev": {
+            "ids": "0xe45f0110128e",
+            "name": "domoticz",
+            "sw": "6.12.25+rpt-rpi-v8",
+            "mdl": "pi4b",
+            "mf": "raspberry pi foundation"
+        }
+    }])
+    client.publish(MQTT_TOPIC_CONFIG, config_payload, retain=True)
+    print(f"Publish {config_payload} on [{MQTT_TOPIC_CONFIG}]")
 
 def on_message(client, userdata, msg):
-    Debug(f"Received `{msg.payload.decode()}` from `{msg.topic}` topic")
-    if (msg.topic==CarportCommandTopic):
-        Debug("Received command for Carport light")
-        if (msg.payload.decode()=="ON" or msg.payload.decode()=='{"state":"ON"}'):
-            switch_carportlamp(True)
-        else:
-            switch_carportlamp(False)
+    global lamp_status
+    payload = msg.payload.decode()
+    print(f"Message received on topic {msg.topic}: {payload}")
 
-def exit_gracefully(sig, frame):
-    Debug('exited gracefully!')
-    client.loop_stop()
-    client.disconnect()
-    sys.exit(0)
+    if msg.topic == MQTT_TOPIC_COMMAND:
+        if payload.lower() in ["on", "true", "1"]:
+            lamp_status = True
+            print("Switching on carportlamp")
+            # TODO: GPIO output aanzetten als je output gebruikt
+            publish_state(True)
+        elif payload.lower() in ["off", "false", "0"]:
+            lamp_status = False
+            print("Switching off carportlamp")
+            # TODO: GPIO output uitzetten
+            publish_state(False)
 
-def readIniFile():
-    global broker,port,username,password,qos,retain,reconnectdelay,publishinterval,hatopic
-    global CarportDiscoveryTopic,CarportStateTopic,CarportCommandTopic
+def publish_state(state):
+    mqtt_client.publish(MQTT_TOPIC_STATE, "ON" if state else "OFF", retain=True)
+    print(f"Published lamp state: {'ON' if state else 'OFF'}")
 
-    Debug("ReadIniFIle()")
-
-    config=configparser.ConfigParser()
-    config.read("config.ini")
-    broker=config["mqtt"]["broker"]
-    port=int(config["mqtt"]["port"])
-    username=config["mqtt"]["username"]
-    password=config["mqtt"]["password"]
-    qos=int(config["mqtt"]["qos"])
-    hatopic=config["mqtt"]["hatopic"]
-    retain=config.getboolean("mqtt","retain")
-    reconnectdelay=int(config["intervals"]["reconnectdelay"])
-    publishinterval=int(config["intervals"]["publishinterval"])
-
-    #set topics
-    CarportDiscoveryTopic=hatopic+"/light/"+client_id+"/"+switchname+"/config"
-    CarportStateTopic=client_id+"/light/"+switchname+"/state"
-    CarportCommandTopic=client_id+"/light/"+switchname+"/set"
+def button_pressed():
+    global lamp_status
+    lamp_status = not lamp_status
+    print(f"Button pressed, toggling lamp to {'ON' if lamp_status else 'OFF'}")
+    publish_state(lamp_status)
 
 def run():
-    global client
+    global mqtt_client, button
 
-    # read ini file
-    readIniFile()
+    # Setup button input
+    button = Button(GPIO_PIN)
+    button.when_pressed = button_pressed
 
-    # connect
-    client = connect_mqtt()
+    # Setup MQTT client
+    mqtt_client = mqtt.Client(MQTT_CLIENT_ID)
+    mqtt_client.on_connect = on_connect
+    mqtt_client.on_message = on_message
 
-    #catch the signals to be able to stop gracefully in case of keyboard interrupts of kill signals
-    signal.signal(signal.SIGTERM,exit_gracefully)
-    signal.signal(signal.SIGINT,exit_gracefully)
+    mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
+    mqtt_client.loop_start()
 
-    #Create listening thread
-    client.loop_start()
+    print("Running, press CTRL+C to exit")
 
-    #Loop forever (until sigterm of sigint, which are handled in exit_gracefully)
-    while True:
-        time.sleep(publishinterval)
-        publishCarportLamp()
+    # Run until stopped
+    while running:
+        time.sleep(1)
 
-if __name__ == '__main__':
+def signal_handler(sig, frame):
+    global running
+    print('Exiting gracefully')
+    running = False
+    mqtt_client.loop_stop()
+    mqtt_client.disconnect()
+    sys.exit(0)
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGINT, signal_handler)
     run()
+
