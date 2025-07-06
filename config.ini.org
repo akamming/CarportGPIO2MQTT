@@ -1,13 +1,35 @@
 [mqtt]
-broker = <ip adress of your broker>
-port = <port of your broker >
-hatopic= <ad topic of homeassistant, normally homassistant>
-username = <your mqtt username>
-password = <your mqtt password>
-qos = 0
-retain = True|False
+# MQTT broker settings
+broker = 192.168.1.100         # IP address or hostname of your MQTT broker
+port = 1883                    # MQTT broker port (usually 1883)
+hatopic = homeassistant        # Base MQTT topic used by Home Assistant for MQTT discovery
+username = your_username       # MQTT username (if your broker requires authentication)
+password = your_password       # MQTT password
+qos = 0                       # MQTT Quality of Service level (0, 1, or 2)
+retain = True                 # MQTT retain flag for published messages (True or False)
 
-; normally don't change these figures
 [intervals]
-reconnectdelay=5
-PublishInterval=900
+reconnectdelay = 5            # Delay in seconds before reconnecting to MQTT broker after disconnect
+PublishInterval = 900         # Interval in seconds for periodic publishing (not used currently)
+
+[domoticz]
+gpio_pin = 17                 # GPIO pin number (BCM) where your water meter pulse input is connected
+idx = 123                     # Domoticz device IDX for the water meter
+meterfile = meterstand.txt    # File to store the water meter reading persistently
+
+[main]
+script_name = myscript        # Unique name for this script, used in MQTT topics for lights
+
+# Comma-separated list of lamp names you want to control via GPIO relays
+lampen = Lamp1,Lamp2
+
+# GPIO pin numbers (BCM) for each lamp defined above
+gpio_Lamp1 = 22
+gpio_Lamp2 = 23
+
+# Specify if the relay is active HIGH or active LOW for each lamp
+# True means setting the pin HIGH turns the lamp ON
+# False means setting the pin LOW turns the lamp ON
+active_high_Lamp1 = True
+active_high_Lamp2 = False
+
